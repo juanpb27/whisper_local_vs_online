@@ -9,7 +9,7 @@ load_dotenv()
 
 class Config:
     MODEL_PATH = "whisper_model"
-    LOCAL_MODEL_NAME = "tiny"
+    LOCAL_MODEL_NAME = "turbo"
     FIREWORKS_MODEL_NAME = "whisper-v3"
     AUDIO_PATH = "audio.mp3"
     FIREWORKS_API_KEY = os.getenv("FIREWORKS_API_KEY")
