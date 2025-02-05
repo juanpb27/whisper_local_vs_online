@@ -30,11 +30,6 @@ class Config:
                 model = whisper.load_model(Config.LOCAL_MODEL_NAME, download_root=Config.MODEL_PATH)
                 model = model.to(device)  # Mover modelo a GPU si está disponible
 
-                if device == "cuda":
-                    print("🔹 Configurando modelo en FP16 para GPU...")
-                    # Usar `autocast` en lugar de `model.half()` para evitar errores
-                    model.dtype = torch.float16  # 🔹 Solo cambia el tipo sin forzar todas las operaciones a FP16
-
                 print(f"✅ Modelo local {Config.LOCAL_MODEL_NAME} cargado en {device}.")
                 return None, model
             except Exception as e:
