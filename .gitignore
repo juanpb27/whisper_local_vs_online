@@ -1,0 +1,44 @@
+# Archivos de entorno y configuración
+.env
+.env.local
+.env.production
+.env.*  # Cualquier otro archivo de entorno
+
+# Dependencias de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.virtualenv/
+env/
+.venv/
+
+# Modelos descargados de Whisper
+whisper_model/
+
+# Archivos de logs y debug
+logs/
+*.log
+*.out
+*.err
+debug.log
+
+# Archivos temporales de sistema
+.DS_Store
+Thumbs.db
+
+# Archivos de compilación de Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Caché de herramientas
+*.mypy_cache/
+pip-wheel-metadata/
+pip-log.txt
+
+# Archivos de editor de texto
+.vscode/
+.idea/
+*.swp
+
+audio.mp3
