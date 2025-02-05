@@ -1,4 +1,5 @@
 import time
+import torch
 from queue import Queue, Empty
 from threading import Thread
 from tempfile import NamedTemporaryFile
@@ -41,7 +42,6 @@ class TranscriptionService:
                 idx, segment = item  # Extraemos el índice y el segmento
                 print(f"🔹 Transcribiendo segmento {idx} de {segment.duration_seconds} segundos...")
 
-                # Si el segmento es muy corto, omitirlo
                 if segment.duration_seconds < 0.1:
                     print(f"⚠️ Segmento {idx} demasiado corto, omitiendo...")
                     continue
@@ -52,8 +52,13 @@ class TranscriptionService:
                         segment.export(segment_file.name, format="wav", parameters=["-ac", "1", "-ar", "16000"])
 
                         if self.local:
-                            transcription_result = self.current_model.transcribe(segment_file.name)
-                            transcription_text = transcription_result["text"]  # 🔹 Extraer solo el texto
+                            device = Config.get_device()  # Detectar GPU o CPU
+
+                            with torch.amp.autocast(device):
+                                transcription_result = self.current_model.transcribe(segment_file.name)
+
+                            transcription_text = transcription_result["text"]
+
                         else:
                             with open(segment_file.name, "rb") as audio_file:
                                 transcription_text = self.client_build.audio.transcriptions.create(
