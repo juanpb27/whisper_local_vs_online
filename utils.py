@@ -74,7 +74,7 @@ class TranscriptionService:
             except Empty:
                 break
 
-    def transcribe_audio(self, file_path, worker: int):
+    def transcribe_audio(self, file_path):
         """Orquestador de transcripción"""
         queue_segments = Queue()
         results_queue = Queue()
