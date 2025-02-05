@@ -1,7 +1,6 @@
 import time
-import torch
-from queue import Queue, Empty
-from threading import Thread
+import multiprocessing
+from queue import Empty
 from tempfile import NamedTemporaryFile
 from pydub import AudioSegment
 from config import Config
@@ -16,102 +15,68 @@ class TranscriptionService:
         self.total_segments = 0
         self.failed_segments = 0
 
-    def distribute_segments(self, audio_path: str, queue_segments: Queue, segment_length_ms: int = 30 * 1000):
-        """Divide el audio en segmentos y los coloca en queue_segments con su índice."""
+    def distribute_segments(self, audio_path: str, segment_length_ms: int = 30 * 1000):
+        """Divide el audio en segmentos y los devuelve como una lista."""
         try:
             audio = AudioSegment.from_file(audio_path)
             self.total_segments = (len(audio) // segment_length_ms) + 1
             print(f"Duración total del audio: {len(audio)} ms, {self.total_segments} segmentos.")
 
+            segments = []
             for idx, start in enumerate(range(0, len(audio), segment_length_ms)):
                 end = min(start + segment_length_ms, len(audio))
                 segment = audio[start:end]
-                queue_segments.put((idx, segment))
+                segments.append((idx, segment))
                 print(f"Segmento {idx} de audio creado: {start} ms - {end} ms")
+
+            return segments
         except Exception as e:
             print(f"Error en distribute_segments: {e}")
+            return []
 
-    def transcribe_segment(self, queue_segments: Queue, results_queue: Queue):
-        """Procesa segmentos de audio en paralelo y coloca los resultados ordenados por índice."""
-        device = Config.get_device()
+    def transcribe_segment(self, item):
+        """Transcribe un solo segmento en un proceso separado."""
+        try:
+            idx, segment = item
+            print(f"🔹 Transcribiendo segmento {idx} de {segment.duration_seconds} segundos...")
 
-        while True:
-            try:
-                item = queue_segments.get(timeout=5)
-                if item is None:
-                    break  # Señal de terminación
+            if segment.duration_seconds < 0.1:
+                print(f"⚠️ Segmento {idx} demasiado corto, omitiendo...")
+                return (idx, "")
 
-                idx, segment = item  # Extraemos el índice y el segmento
-                print(f"🔹 Transcribiendo segmento {idx} de {segment.duration_seconds} segundos...")
+            with NamedTemporaryFile(delete=False, suffix=".wav") as segment_file:
+                segment.export(segment_file.name, format="wav", parameters=["-ac", "1", "-ar", "16000"])
 
-                if segment.duration_seconds < 0.1:
-                    print(f"⚠️ Segmento {idx} demasiado corto, omitiendo...")
-                    continue
+                if self.local:
+                    transcription_result = self.current_model.transcribe(segment_file.name)
+                    transcription_text = transcription_result["text"]
+                else:
+                    with open(segment_file.name, "rb") as audio_file:
+                        transcription_text = self.client_build.audio.transcriptions.create(
+                            model=self.current_model,
+                            language="es",
+                            file=audio_file,
+                            response_format="text"
+                        )
 
-                try:
-                    with NamedTemporaryFile(delete=False, suffix=".wav") as segment_file:
-                        segment.export(segment_file.name, format="wav", parameters=["-ac", "1", "-ar", "16000"])
+                return (idx, transcription_text)
 
-                        if self.local:
-                            with torch.amp.autocast(device):
-                                transcription_result = self.current_model.transcribe(segment_file.name)
-
-                            transcription_text = transcription_result["text"]
-
-                        else:
-                            with open(segment_file.name, "rb") as audio_file:
-                                transcription_text = self.client_build.audio.transcriptions.create(
-                                    model=self.current_model,
-                                    language="es",
-                                    file=audio_file,
-                                    response_format="text",
-                                    prompt="'EDOF', '2+', '3+'"
-                                )
-
-                        results_queue.put((idx, transcription_text, segment.duration_seconds))
-
-                except Exception as e:
-                    print(f"❌ Error al transcribir segmento {idx}: {e}")
-                    self.failed_segments += 1
-                    continue
-
-            except Empty:
-                break
+        except Exception as e:
+            print(f"❌ Error al transcribir segmento {idx}: {e}")
+            return (idx, "")
 
     def transcribe_audio(self, file_path):
-        """Orquestador de transcripción"""
-        queue_segments = Queue()
-        results_queue = Queue()
-
+        """Orquestador de transcripción usando multiprocessing."""
         start_time = time.time()
+        segments = self.distribute_segments(file_path)
 
-        #worker = Config.get_workers()
-        worker = 2 # test
-        print(f"Usando {worker} workers para transcripción")
-        producer_thread = Thread(target=self.distribute_segments, args=(file_path, queue_segments))
-        producer_thread.start()
+        worker_count = Config.get_workers()
+        print(f"🖥️ Usando {worker_count} procesos para transcripción.")
 
-        threads_list = []
+        with multiprocessing.Pool(worker_count) as pool:
+            results = pool.map(self.transcribe_segment, segments)
 
-        for _ in range(worker):  # 🔹 Usa todos los workers calculados
-            t = Thread(target=self.transcribe_segment, args=(queue_segments, results_queue))
-            threads_list.append(t)
-            t.start()
-
-        producer_thread.join()
-        for _ in threads_list:
-            queue_segments.put(None)
-        for th in threads_list:
-            th.join()
-
-        transcription_results = {}
-
-        while not results_queue.empty():
-            idx, transcription_text, _ = results_queue.get()
-            if transcription_text:
-                transcription_results[idx] = transcription_text
-
-        # 🔹 Unir solo los textos transcritos
+        transcription_results = {idx: text for idx, text in results if text}
         transcription_texts = [transcription_results[i] for i in sorted(transcription_results.keys())]
         transcription_text = " ".join(transcription_texts)
 
