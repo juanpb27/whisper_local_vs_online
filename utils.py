@@ -33,6 +33,8 @@ class TranscriptionService:
 
     def transcribe_segment(self, queue_segments: Queue, results_queue: Queue):
         """Procesa segmentos de audio en paralelo y coloca los resultados ordenados por índice."""
+        device = Config.get_device()
+
         while True:
             try:
                 item = queue_segments.get(timeout=5)
@@ -48,12 +50,9 @@ class TranscriptionService:
 
                 try:
                     with NamedTemporaryFile(delete=False, suffix=".wav") as segment_file:
-                        # 🔹 Convertir a PCM WAV, mono, 16kHz
                         segment.export(segment_file.name, format="wav", parameters=["-ac", "1", "-ar", "16000"])
 
                         if self.local:
-                            device = Config.get_device()  # Detectar GPU o CPU
-
                             with torch.amp.autocast(device):
                                 transcription_result = self.current_model.transcribe(segment_file.name)
 

@@ -32,7 +32,8 @@ class Config:
 
                 if device == "cuda":
                     print("🔹 Configurando modelo en FP16 para GPU...")
-                    model = model.half()  # 🔹 Convierte los pesos a FP16 para acelerar la inferencia
+                    # Usar `autocast` en lugar de `model.half()` para evitar errores
+                    model.dtype = torch.float16  # 🔹 Solo cambia el tipo sin forzar todas las operaciones a FP16
 
                 print(f"✅ Modelo local {Config.LOCAL_MODEL_NAME} cargado en {device}.")
                 return None, model
@@ -62,5 +63,5 @@ class Config:
             # 🔹 Para GPU, usar más workers (máximo 8)
             return min(8, total_cores // 2)
         else:
-            # 🔹 Para CPU, usar menos workers (máximo 4)
+            # 🔹 Para CPU, usa menos workers (máximo 4)
             return min(4, total_cores // 4)
