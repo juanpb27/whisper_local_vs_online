@@ -49,10 +49,11 @@ class TranscriptionService:
                 if self.local:
                     transcription_result = self.current_model.transcribe(segment_file.name)
                     transcription_text = transcription_result["text"]
-                    torch.cuda.empty_cache()  # 🔹 Libera memoria CUDA después de cada transcripción
 
                     # 🔹 Liberar memoria CUDA manualmente
                     torch.cuda.empty_cache()
+                    torch.cuda.ipc_collect()  # Recolectar memoria IPC
+
                 else:
                     with open(segment_file.name, "rb") as audio_file:
                         transcription_text = self.client_build.audio.transcriptions.create(
@@ -62,7 +63,7 @@ class TranscriptionService:
                             response_format="text"
                         )
 
-                return (idx, transcription_text)
+            return (idx, transcription_text)
 
         except Exception as e:
             print(f"❌ Error al transcribir segmento {idx}: {e}")
@@ -78,10 +79,13 @@ class TranscriptionService:
         results = {}
 
         if self.local:
-    # 🔹 Multiprocessing para optimizar ejecución en GPU
             with multiprocessing.Pool(worker_count) as pool:
                 results_list = pool.map(self.transcribe_segment, segments)
                 results = {idx: text for idx, text in results_list if text}
+
+            # 🔹 Liberar memoria CUDA después de cerrar los procesos
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
         else:
             # 🔹 Threading para Fireworks AI (evita problemas con serialización)
             threads = []
