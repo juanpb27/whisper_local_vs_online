@@ -2,6 +2,7 @@ import argparse
 import os
 from utils import TranscriptionService
 from config import Config
+import torch
 
 def download_model():
     """Descarga el modelo de Whisper si no está ya en la carpeta"""
@@ -11,6 +12,12 @@ def download_model():
     print(f"Descargando modelo Whisper ({Config.LOCAL_MODEL_NAME}) en {Config.MODEL_PATH}...")
     try:
         import whisper
+        if torch.cuda.is_available():
+            print(f"✅ GPU detectada: {torch.cuda.get_device_name(0)}")
+            torch.cuda.set_device(0)  # 🔹 Asegura que usa la GPU
+        else:
+            print("❌ No se detectó GPU, se usará CPU.")
+
         whisper.load_model(Config.LOCAL_MODEL_NAME, download_root=Config.MODEL_PATH)
         print("✅ Modelo descargado correctamente.")
     except Exception as e:

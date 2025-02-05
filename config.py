@@ -16,8 +16,12 @@ class Config:
 
     @staticmethod
     def get_device():
-        """Devuelve 'cuda' si hay GPU disponible, de lo contrario 'cpu'."""
-        return "cuda" if torch.cuda.is_available() else "cpu"
+        """Verifica si hay GPU disponible y asigna CUDA."""
+        if torch.cuda.is_available():
+            torch.cuda.set_device(0)  # 🔹 Asegura que usa GPU 0
+            return "cuda"
+        return "cpu"
+
 
     @staticmethod
     def get_client_and_model(local: bool):
@@ -27,8 +31,16 @@ class Config:
                 device = Config.get_device()
                 print(f"🔹 Cargando modelo local {Config.LOCAL_MODEL_NAME} en {device}...")
 
+                # Forzar uso de CUDA si está disponible
+                if device == "cuda":
+                    torch.cuda.set_device(0)
+
+                # Cargar modelo en GPU o CPU según disponibilidad
                 model = whisper.load_model(Config.LOCAL_MODEL_NAME, download_root=Config.MODEL_PATH)
-                model = model.to(device)  # Mover modelo a GPU si está disponible
+                model = model.to(device)  
+
+                # Liberar memoria GPU después de la carga del modelo
+                torch.cuda.empty_cache()
 
                 print(f"✅ Modelo local {Config.LOCAL_MODEL_NAME} cargado en {device}.")
                 return None, model
@@ -55,8 +67,6 @@ class Config:
         device = Config.get_device()
 
         if device == "cuda":
-            # 🔹 Para GPU, usar más workers (máximo 8)
-            return min(8, total_cores // 2)
+            return min(4, total_cores // 2)
         else:
-            # 🔹 Para CPU, usa menos workers (máximo 4)
             return min(4, total_cores // 4)

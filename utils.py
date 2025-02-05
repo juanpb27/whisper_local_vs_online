@@ -49,6 +49,7 @@ class TranscriptionService:
                 if self.local:
                     transcription_result = self.current_model.transcribe(segment_file.name)
                     transcription_text = transcription_result["text"]
+                    torch.cuda.empty_cache()  # 🔹 Libera memoria CUDA después de cada transcripción
 
                     # 🔹 Liberar memoria CUDA manualmente
                     torch.cuda.empty_cache()
@@ -77,12 +78,12 @@ class TranscriptionService:
         results = {}
 
         if self.local:
-            # 🔹 Multiprocessing para ejecución en GPU (evitando problemas de bloqueos)
+    # 🔹 Multiprocessing para optimizar ejecución en GPU
             with multiprocessing.Pool(worker_count) as pool:
                 results_list = pool.map(self.transcribe_segment, segments)
                 results = {idx: text for idx, text in results_list if text}
         else:
-            # 🔹 Threading para Fireworks AI (no tiene problemas con serialización)
+            # 🔹 Threading para Fireworks AI (evita problemas con serialización)
             threads = []
             results_lock = threading.Lock()
 
