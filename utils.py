@@ -5,10 +5,10 @@ from tempfile import NamedTemporaryFile
 from pydub import AudioSegment
 from config import Config
 
-class TranscriptionService:
+multiprocessing.set_start_method("spawn", force=True)  # 🔹 Forzar spawn para evitar el error de CUDA
 
+class TranscriptionService:
     def __init__(self, client_build, model, local: bool):
-        """Inicializa el servicio de transcripción."""
         self.client_build = client_build
         self.current_model = model
         self.local = local
@@ -16,7 +16,6 @@ class TranscriptionService:
         self.failed_segments = 0
 
     def distribute_segments(self, audio_path: str, segment_length_ms: int = 30 * 1000):
-        """Divide el audio en segmentos y los devuelve como una lista."""
         try:
             audio = AudioSegment.from_file(audio_path)
             self.total_segments = (len(audio) // segment_length_ms) + 1
@@ -28,7 +27,7 @@ class TranscriptionService:
                 segment = audio[start:end]
                 segments.append((idx, segment))
                 print(f"Segmento {idx} de audio creado: {start} ms - {end} ms")
-
+            
             return segments
         except Exception as e:
             print(f"Error en distribute_segments: {e}")
@@ -66,7 +65,6 @@ class TranscriptionService:
             return (idx, "")
 
     def transcribe_audio(self, file_path):
-        """Orquestador de transcripción usando multiprocessing."""
         start_time = time.time()
         segments = self.distribute_segments(file_path)
 
