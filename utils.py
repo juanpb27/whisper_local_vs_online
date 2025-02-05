@@ -1,6 +1,7 @@
 import time
+import threading
 import multiprocessing
-from queue import Empty
+import torch
 from tempfile import NamedTemporaryFile
 from pydub import AudioSegment
 from config import Config
@@ -34,7 +35,6 @@ class TranscriptionService:
             return []
 
     def transcribe_segment(self, item):
-        """Transcribe un solo segmento en un proceso separado."""
         try:
             idx, segment = item
             print(f"🔹 Transcribiendo segmento {idx} de {segment.duration_seconds} segundos...")
@@ -49,6 +49,9 @@ class TranscriptionService:
                 if self.local:
                     transcription_result = self.current_model.transcribe(segment_file.name)
                     transcription_text = transcription_result["text"]
+
+                    # 🔹 Liberar memoria CUDA manualmente
+                    torch.cuda.empty_cache()
                 else:
                     with open(segment_file.name, "rb") as audio_file:
                         transcription_text = self.client_build.audio.transcriptions.create(
@@ -71,11 +74,33 @@ class TranscriptionService:
         worker_count = Config.get_workers()
         print(f"🖥️ Usando {worker_count} procesos para transcripción.")
 
-        with multiprocessing.Pool(worker_count) as pool:
-            results = pool.map(self.transcribe_segment, segments)
+        results = {}
 
-        transcription_results = {idx: text for idx, text in results if text}
-        transcription_texts = [transcription_results[i] for i in sorted(transcription_results.keys())]
+        if self.local:
+            # 🔹 Multiprocessing para ejecución en GPU (evitando problemas de bloqueos)
+            with multiprocessing.Pool(worker_count) as pool:
+                results_list = pool.map(self.transcribe_segment, segments)
+                results = {idx: text for idx, text in results_list if text}
+        else:
+            # 🔹 Threading para Fireworks AI (no tiene problemas con serialización)
+            threads = []
+            results_lock = threading.Lock()
+
+            def worker(segment):
+                idx, text = self.transcribe_segment(segment)
+                with results_lock:
+                    results[idx] = text
+
+            for segment in segments:
+                thread = threading.Thread(target=worker, args=(segment,))
+                thread.start()
+                threads.append(thread)
+
+            for thread in threads:
+                thread.join()
+
+        # 🔹 Ordenar resultados antes de concatenarlos
+        transcription_texts = [results[i] for i in sorted(results.keys())]
         transcription_text = " ".join(transcription_texts)
 
         end_time = time.time()
