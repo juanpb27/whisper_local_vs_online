@@ -81,12 +81,13 @@ class TranscriptionService:
 
         start_time = time.time()
 
+        worker = Config.get_workers()
         print(f"Usando {worker} workers para transcripción")
         producer_thread = Thread(target=self.distribute_segments, args=(file_path, queue_segments))
         producer_thread.start()
 
         threads_list = []
-        worker = Config.get_workers()
+
         for _ in range(worker):  # 🔹 Usa todos los workers calculados
             t = Thread(target=self.transcribe_segment, args=(queue_segments, results_queue))
             threads_list.append(t)
